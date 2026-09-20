@@ -1,0 +1,1 @@
+const r=require('express').Router();const c=require('../controllers/ai');const auth=require('../middleware/auth');r.post('/generate-blog',auth,c.generate);r.post('/summarize',c.summarize);r.post('/faq',auth,c.faq);r.post('/weatherwise',auth,c.weatherWise);r.post('/fittrack',auth,c.fitTrack);module.exports=r;
