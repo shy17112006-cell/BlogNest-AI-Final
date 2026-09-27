@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { api } from "./api";
 
 const roles = ["admin", "editor", "author", "reader"];
@@ -15,6 +15,9 @@ const initialForm = {
   category: "",
   tags: "",
   status: "Draft",
+  scheduledAt: "",
+  photo: "",
+  media: "",
 };
 
 const initialAI = {
@@ -66,6 +69,25 @@ function getUserArray(data) {
   return toArray(data, ["users", "results"]);
 }
 
+function statusSlug(status) {
+  return String(status || "published")
+    .toLowerCase()
+    .replace(/\s+/g, "-");
+}
+
+/* ---- SVG nav icons ---- */
+const NAV_ICONS = {
+  home: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+  create: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>,
+  search: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>,
+  comments: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>,
+  ai: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+  review: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>,
+  categories: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>,
+  analytics: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>,
+  users: <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+};
+
 export default function App() {
   const [token, setToken] = useState(
     localStorage.getItem("bn_token") || ""
@@ -96,6 +118,8 @@ export default function App() {
 
   const [faq, setFaq] = useState("");
   const [answer, setAnswer] = useState("");
+
+  const [editingId, setEditingId] = useState(null);
 
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
@@ -285,6 +309,71 @@ export default function App() {
     }
   }
 
+
+  async function editPost(blog) {
+    setEditingId(blog?._id || null);
+    setForm({
+      title: blog?.title || "",
+      content: blog?.content || "",
+      category: blog?.category || "",
+      tags: Array.isArray(blog?.tags) ? blog.tags.join(", ") : (blog?.tags || ""),
+      status: blog?.status || "Draft",
+      scheduledAt: blog?.scheduledAt ? new Date(blog.scheduledAt).toISOString().slice(0, 16) : "",
+      photo: blog?.photo || "",
+      media: typeof blog?.media === "string" ? blog.media : (blog?.media?.path || ""),
+    });
+    setTab("create");
+    clearMessages();
+  }
+
+  async function deletePost(blogId) {
+    if (!window.confirm("Delete this post? This action cannot be undone.")) return;
+    clearMessages();
+    try {
+      await api.del(token, blogId);
+      await loadBlogs(token);
+      flash("Post deleted successfully.");
+    } catch (err) {
+      setError(err?.message || "Unable to delete the post.");
+    }
+  }
+
+  async function changePostStatus(blogId, status) {
+    clearMessages();
+    try {
+      await api.status(token, blogId, status);
+      await loadBlogs(token);
+      flash(`Post moved to ${status}.`);
+    } catch (err) {
+      setError(err?.message || "Unable to update post status.");
+    }
+  }
+
+
+  async function removeCategory(categoryId) {
+    if (!window.confirm("Remove this category?")) return;
+    clearMessages();
+    try {
+      if (typeof api.delCategory === "function") {
+        await api.delCategory(token, categoryId);
+      } else {
+        const base = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
+        const response = await fetch(`${base}/categories/${categoryId}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error(body.message || "Category deletion failed.");
+        }
+      }
+      await loadCategories();
+      flash("Category removed successfully.");
+    } catch (err) {
+      setError(err?.message || "Unable to remove category.");
+    }
+  }
+
   async function savePost(event) {
     event.preventDefault();
     clearMessages();
@@ -295,14 +384,24 @@ export default function App() {
         .map((tag) => tag.trim())
         .filter(Boolean);
 
-      await api.create(token, {
+      const payload = {
         ...form,
         tags,
-      });
+        scheduledAt: form.scheduledAt || undefined,
+        photo: form.photo || undefined,
+        media: form.media || undefined,
+      };
+
+      if (editingId) {
+        await api.update(token, editingId, payload);
+      } else {
+        await api.create(token, payload);
+      }
 
       setForm(initialForm);
+      setEditingId(null);
       await loadBlogs(token);
-      flash("Post saved successfully.");
+      flash(editingId ? "Post updated successfully." : "Post saved successfully.");
       setTab("home");
     } catch (err) {
       console.error("Saving post failed:", err);
@@ -338,6 +437,9 @@ export default function App() {
           ? blog.tags.join(", ")
           : "",
         status: blog.status || "Draft",
+        scheduledAt: blog.scheduledAt ? new Date(blog.scheduledAt).toISOString().slice(0, 16) : "",
+        photo: blog.photo || "",
+        media: typeof blog.media === "string" ? blog.media : (blog.media?.path || ""),
       });
 
       flash("AI draft generated successfully.");
@@ -461,14 +563,12 @@ export default function App() {
 
   if (loadingUser) {
     return (
-      <div className="auth">
-        <div className="authbox">
-          <div className="brand">BN</div>
-          <p className="eyebrow">AI CONTENT MANAGEMENT SYSTEM</p>
-          <h1>
-            BlogNest <span>AI</span>
-          </h1>
-          <p>Loading your workspace...</p>
+      <div className="loading-screen">
+        <div className="loading-box">
+          <div className="loading-ring" />
+          <div className="brand" style={{ margin: 0 }}>BN</div>
+          <h3>BlogNest AI</h3>
+          <p>Opening your workspace&hellip;</p>
         </div>
       </div>
     );
@@ -479,15 +579,15 @@ export default function App() {
       <div className="auth">
         <div className="authbox">
           <div className="brand">BN</div>
-          <p className="eyebrow">AI CONTENT MANAGEMENT SYSTEM</p>
+          <p className="eyebrow">A publishing workspace with a memory for roles</p>
 
           <h1>
             BlogNest <span>AI</span>
           </h1>
 
           <p>
-            Secure blogging with roles, workflows,
-            search and Gemini AI.
+            Draft, review and publish with your team,
+            backed by Gemini for first drafts and summaries.
           </p>
 
           <div className="tabs">
@@ -568,7 +668,9 @@ export default function App() {
     );
   }
 
-  const nav = ["home", "search", "comments", "ai"];
+  const nav = ["home", "search", "comments"];
+
+  if (["admin", "editor", "author"].includes(user.role)) nav.push("ai");
 
   if (["admin", "author"].includes(user.role)) {
     nav.splice(1, 0, "create");
@@ -586,17 +688,23 @@ export default function App() {
     <>
       <header>
         <div className="logo">
-          BN <b>BlogNest AI</b>
+          <div className="logo-mark">BN</div>
+          <b>BlogNest AI</b>
         </div>
 
-        <div>
-          {user.name} · {user.role}
+        <div className="header-right">
+          <div className="user-chip">
+            <div className="user-avatar">
+              {(user.name || "U").charAt(0).toUpperCase()}
+            </div>
+            <span className="user-name">{user.name}</span>
+            <span className="user-role">{user.role}</span>
+          </div>
 
-          <button
-            type="button"
-            className="ghost"
-            onClick={logout}
-          >
+          <button type="button" className="ghost" onClick={logout}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+            </svg>
             Logout
           </button>
         </div>
@@ -614,6 +722,7 @@ export default function App() {
               }}
               key={item}
             >
+              <span className="nav-icon">{NAV_ICONS[item]}</span>
               {item.charAt(0).toUpperCase() + item.slice(1)}
             </button>
           ))}
@@ -629,47 +738,42 @@ export default function App() {
           {tab === "home" && (
             <>
               <div className="hero">
-                <p className="eyebrow">
-                  {user.role.toUpperCase()} WORKSPACE
-                </p>
-
-                <h2>
-                  Publish with <span>purpose.</span>
-                </h2>
-
+                <p className="eyebrow">Signed in as {user.role}</p>
+                <h2>Publish with <span>purpose.</span></h2>
                 <p>
-                  Blog lifecycle, search, moderation,
-                  analytics and AI in one CMS.
+                  Track drafts through review to publish, moderate comments
+                  and draft with Gemini — all from one workspace.
                 </p>
               </div>
 
               <div className="cards">
-                <Metric n={blogs.length} t="Visible posts" />
-                <Metric
-                  n={stats?.publishedPosts ?? "—"}
-                  t="Published"
-                />
-                <Metric
-                  n={stats?.comments ?? "—"}
-                  t="Comments"
-                />
-                <Metric
-                  n={stats?.totalViews ?? "—"}
-                  t="Views"
-                />
+                <Metric n={blogs.length} t="Visible Posts" icon="📝" />
+                <Metric n={stats?.publishedPosts ?? "—"} t="Published" icon="🚀" />
+                <Metric n={stats?.comments ?? "—"} t="Comments" icon="💬" />
+                <Metric n={stats?.totalViews ?? "—"} t="Total Views" icon="👁" />
+              </div>
+
+              <div className="section-head">
+                <h2>Latest Posts</h2>
               </div>
 
               <PostList
                 blogs={blogs}
                 token={token}
                 reload={() => loadBlogs(token)}
+                canEdit={["admin", "author"].includes(user.role)}
+                canDelete={["admin", "author"].includes(user.role)}
+                canModerate={["admin", "editor"].includes(user.role)}
+                onEdit={editPost}
+                onDelete={deletePost}
+                user={user}
               />
             </>
           )}
 
           {tab === "create" && (
             <section className="panel">
-              <h2>Create / Draft Post</h2>
+              <h2>{editingId ? "Edit Post" : "Create / Draft Post"}</h2>
 
               <form onSubmit={savePost}>
                 <input
@@ -708,6 +812,27 @@ export default function App() {
                   />
                 </div>
 
+                <div className="row">
+                  <input
+                    type="datetime-local"
+                    value={form.scheduledAt}
+                    disabled={form.status !== "Scheduled"}
+                    onChange={(event) => setForm({ ...form, scheduledAt: event.target.value })}
+                    aria-label="Scheduled publication time"
+                  />
+                  <input
+                    placeholder="Photo URL / path"
+                    value={form.photo}
+                    onChange={(event) => setForm({ ...form, photo: event.target.value })}
+                  />
+                </div>
+
+                <input
+                  placeholder="Media metadata / path"
+                  value={form.media}
+                  onChange={(event) => setForm({ ...form, media: event.target.value })}
+                />
+
                 <select
                   value={form.status}
                   onChange={(event) =>
@@ -741,9 +866,12 @@ export default function App() {
                   }
                 />
 
-                <button type="submit" className="primary">
-                  Save Post
-                </button>
+                <div className="button-row">
+                  <button type="submit" className="primary">
+                    {editingId ? "Update Post" : "Save Post"}
+                  </button>
+                  {editingId && <button type="button" className="ghost" onClick={() => { setEditingId(null); setForm(initialForm); }}>Cancel Edit</button>}
+                </div>
               </form>
             </section>
           )}
@@ -752,11 +880,12 @@ export default function App() {
             <section className="panel">
               <h2>Advanced Search</h2>
 
-              <div className="row">
+              <div className="search-bar">
                 <input
-                  placeholder="Keyword"
+                  placeholder="Search by keyword…"
                   value={q}
                   onChange={(event) => setQ(event.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && searchBlogs()}
                 />
 
                 <select
@@ -766,34 +895,37 @@ export default function App() {
                   <option value="">All categories</option>
 
                   {categories.map((category) => (
-                    <option
-                      key={category._id}
-                      value={category.name}
-                    >
+                    <option key={category._id} value={category.name}>
                       {category.name}
                     </option>
                   ))}
                 </select>
-              </div>
 
-              <button
-                type="button"
-                className="secondary"
-                onClick={searchBlogs}
-              >
-                Search
-              </button>
+                <button type="button" className="primary" onClick={searchBlogs}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                  </svg>
+                  Search
+                </button>
+              </div>
 
               <PostList
                 blogs={blogs}
                 token={token}
                 reload={() => loadBlogs(token)}
+                canEdit={["admin", "author"].includes(user.role)}
+                canDelete={["admin", "author"].includes(user.role)}
+                canModerate={["admin", "editor"].includes(user.role)}
+                onEdit={editPost}
+                onDelete={deletePost}
+                user={user}
               />
             </section>
           )}
 
           {tab === "ai" && (
             <section className="grid">
+              {["admin", "author"].includes(user.role) && (
               <div className="panel">
                 <h2>Gemini AI Writer</h2>
 
@@ -826,8 +958,11 @@ export default function App() {
                 >
                   Generate Blog
                 </button>
+              </div>
+              )}
 
-                <hr />
+              <div className="panel">
+                <h2>AI Summarizer</h2>
 
                 <textarea
                   rows="6"
@@ -871,6 +1006,7 @@ export default function App() {
                   <p className="result">{answer}</p>
                 )}
               </div>
+
             </section>
           )}
 
@@ -940,9 +1076,10 @@ export default function App() {
                 <p>No categories found.</p>
               ) : (
                 categories.map((category) => (
-                  <p key={category._id}>
-                    {category.name}
-                  </p>
+                  <div className="listrow" key={category._id}>
+                    <span>{category.name}</span>
+                    <button type="button" className="ghost" onClick={() => removeCategory(category._id)}>Remove</button>
+                  </div>
                 ))
               )}
             </section>
@@ -981,21 +1118,157 @@ export default function App() {
   );
 }
 
-function Metric({ n, t }) {
+function Metric({ n, t, icon }) {
   return (
     <div className="metric">
+      {icon && <div className="metric-icon">{icon}</div>}
       <b>{n}</b>
       <small>{t}</small>
     </div>
   );
 }
 
-function PostList({ blogs, token, reload }) {
+/* ---- InlineComments: per-card comment panel ---- */
+function InlineComments({ blogId, token, user, canModerate }) {
+  const [comments, setComments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [newComment, setNewComment] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [localError, setLocalError] = useState("");
+
+  const load = useCallback(async () => {
+    if (!blogId) return;
+    setLoading(true);
+    try {
+      const data = await api.comments(token, blogId);
+      setComments(getCommentArray(data));
+    } catch (err) {
+      console.error("Comments load failed:", err);
+    } finally {
+      setLoading(false);
+    }
+  }, [blogId, token]);
+
+  useEffect(() => { load(); }, [load]);
+
+  async function submitComment(e) {
+    e.preventDefault();
+    if (!newComment.trim()) return;
+    setSubmitting(true);
+    setLocalError("");
+    try {
+      await api.comment(token, blogId, newComment.trim());
+      setNewComment("");
+      await load();
+    } catch (err) {
+      setLocalError(err?.message || "Unable to post comment.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  async function moderate(commentId, status) {
+    try {
+      await api.moderate(token, commentId, status);
+      setComments((prev) =>
+        prev.map((c) => (c._id === commentId ? { ...c, status } : c))
+      );
+    } catch (err) {
+      console.error("Moderation failed:", err);
+    }
+  }
+
+  return (
+    <div className="inline-comments">
+      <div className="inline-comments-inner">
+        {/* New comment form */}
+        {token && (
+          <form className="comment-form-inline" onSubmit={submitComment}>
+            <textarea
+              placeholder="Write a comment…"
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+            />
+            {localError && <p className="error">{localError}</p>}
+            <button type="submit" className="primary" disabled={submitting}>
+              {submitting ? "Posting…" : "Post Comment"}
+            </button>
+          </form>
+        )}
+
+        {/* Comment list */}
+        {loading ? (
+          <p className="comments-empty" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span className="loading-spin" /> Loading comments…
+          </p>
+        ) : comments.length === 0 ? (
+          <p className="comments-empty">No comments yet — be the first!</p>
+        ) : (
+          <div className="comments-list">
+            {comments.map((c) => (
+              <article className="comment-card" key={c._id}>
+                <div className="comment-header">
+                  <strong>{c.userName || c.user?.name || "User"}</strong>
+                  <span className={`comment-status ${c.status || "pending"}`}>
+                    {c.status || "pending"}
+                  </span>
+                </div>
+                <p>{c.message || c.text || ""}</p>
+
+                {canModerate && (
+                  <div className="comment-actions">
+                    {c.status !== "approved" && (
+                      <button type="button" className="secondary" onClick={() => moderate(c._id, "approved")}>
+                        ✓ Approve
+                      </button>
+                    )}
+                    {c.status !== "spam" && (
+                      <button type="button" className="danger" onClick={() => moderate(c._id, "spam")}>
+                        ✗ Spam
+                      </button>
+                    )}
+                    {c.status !== "pending" && (
+                      <button type="button" className="ghost" onClick={() => moderate(c._id, "pending")}>
+                        Pending
+                      </button>
+                    )}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PostList({
+  blogs,
+  token,
+  reload,
+  canEdit = false,
+  canDelete = false,
+  canModerate = false,
+  onEdit,
+  onDelete,
+  user,
+}) {
+  const [openComments, setOpenComments] = useState({});
+
+  function toggleComments(id) {
+    setOpenComments((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
   if (!Array.isArray(blogs) || blogs.length === 0) {
     return (
       <div className="posts">
-        <div className="panel">
-          <p>No blog posts available.</p>
+        <div className="empty-state">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+          </svg>
+          <p>No blog posts to show yet.</p>
         </div>
       </div>
     );
@@ -1004,38 +1277,105 @@ function PostList({ blogs, token, reload }) {
   return (
     <div className="posts">
       {blogs.map((blog) => (
-        <article className="post" key={blog._id}>
-          <small>
-            {blog.status || "Published"} ·{" "}
-            {blog.category || "Uncategorized"} ·{" "}
-            {Array.isArray(blog.tags)
-              ? blog.tags.join(", ")
-              : ""}
-          </small>
+        <article
+          className={`post status-${statusSlug(blog.status)}`}
+          key={blog._id}
+        >
+          <div className="post-body">
+            {/* Meta: status + category */}
+            <div className="meta-line">
+              <span className={`stamp stamp-${statusSlug(blog.status)}`}>
+                {blog.status || "Published"}
+              </span>
+              <span className="meta-text">
+                {blog.category || "Uncategorized"}
+                {Array.isArray(blog.tags) && blog.tags.length > 0
+                  ? ` · ${blog.tags.slice(0, 3).join(", ")}`
+                  : ""}
+              </span>
+            </div>
 
-          <h3>{blog.title || blog.name || "Untitled"}</h3>
+            <h3>{blog.title || blog.name || "Untitled"}</h3>
 
-          <p>{blog.content || blog.message || ""}</p>
+            <p className="post-excerpt">
+              {(blog.content || blog.message || "").slice(0, 200)}
+              {(blog.content || blog.message || "").length > 200 ? "…" : ""}
+            </p>
+          </div>
 
-          <footer>
-            <span>
+          {/* Footer: author + actions */}
+          <div className="post-footer">
+            <span className="post-author">
               {blog.authorName || "Unknown author"}
             </span>
 
-            <button
-              type="button"
-              onClick={async () => {
-                try {
-                  await api.like(token, blog._id);
-                  await reload();
-                } catch (err) {
-                  console.error("Like failed:", err);
-                }
-              }}
-            >
-              ♥ {blog.likes || 0}
-            </button>
-          </footer>
+            <div className="post-actions">
+              {/* Like */}
+              <button
+                type="button"
+                className="like-btn"
+                aria-label="Like post"
+                onClick={async () => {
+                  try {
+                    await api.like(token, blog._id);
+                    await reload();
+                  } catch (err) {
+                    console.error("Like failed:", err);
+                  }
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z"/>
+                </svg>
+                {blog.likes || 0}
+              </button>
+
+              {/* Comments toggle */}
+              <button
+                type="button"
+                className={`comment-toggle-btn${openComments[blog._id] ? " open" : ""}`}
+                aria-label="Toggle comments"
+                onClick={() => toggleComments(blog._id)}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                {openComments[blog._id] ? "Hide" : "Comments"}
+              </button>
+
+              {/* Edit */}
+              {canEdit && (
+                <button
+                  type="button"
+                  className="ghost edit-btn"
+                  onClick={() => onEdit(blog)}
+                >
+                  Edit
+                </button>
+              )}
+
+              {/* Delete */}
+              {canDelete && (
+                <button
+                  type="button"
+                  className="danger delete-btn"
+                  onClick={() => onDelete(blog._id)}
+                >
+                  Delete
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Inline comment section */}
+          {openComments[blog._id] && (
+            <InlineComments
+              blogId={blog._id}
+              token={token}
+              user={user}
+              canModerate={canModerate}
+            />
+          )}
         </article>
       ))}
     </div>
@@ -1060,7 +1400,10 @@ function Review({ blogs, token, reload }) {
           <span>
             {blog.title || blog.name}
             <small>
-              {blog.status} · {blog.authorName || "Unknown"}
+              <span className={`stamp stamp-${statusSlug(blog.status)}`}>
+                {blog.status}
+              </span>{" "}
+              · {blog.authorName || "Unknown"}
             </small>
           </span>
 
@@ -1208,7 +1551,7 @@ function CommentsPanel({ blogs, token, user }) {
       </p>
 
       {safeBlogs.length === 0 ? (
-        <div className="panel">
+        <div className="empty-state">
           <p>
             No blog posts are available for comments.
             Create or publish a post first.
@@ -1278,7 +1621,7 @@ function CommentsPanel({ blogs, token, user }) {
               )}
 
               {!loading && comments.length === 0 && (
-                <div className="panel">
+                <div className="empty-state">
                   <p>
                     No comments found for this post.
                     Add the first comment above.

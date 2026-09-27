@@ -1,2 +1,71 @@
-const Blog=require('../models/Blog');const Comment=require('../models/Comment');const User=require('../models/User');
-exports.summary=async(req,res,next)=>{try{const [users,posts,published,drafts,comments,likes,views]=await Promise.all([User.countDocuments(),Blog.countDocuments(),Blog.countDocuments({status:'Published'}),Blog.countDocuments({status:{$in:['Draft','Pending Approval','Scheduled']}}),Comment.countDocuments(),Blog.aggregate([{$group:{_id:null,total:{$sum:'$likes'}}}]),Blog.aggregate([{$group:{_id:null,total:{$sum:'$views'}}}])]);res.json({users,posts,publishedPosts:published,unpublishedPosts:drafts,comments,totalLikes:likes[0]?.total||0,totalViews:views[0]?.total||0})}catch(e){next(e)}};
+const Blog = require('../models/Blog');
+const Comment = require('../models/Comment');
+const User = require('../models/User');
+
+exports.summary = async (req, res, next) => {
+  try {
+    const [
+      users,
+      posts,
+      published,
+      drafts,
+      comments,
+      likes,
+      views
+    ] = await Promise.all([
+      User.countDocuments(),
+
+      Blog.countDocuments(),
+
+      Blog.countDocuments({
+        status: 'Published'
+      }),
+
+      Blog.countDocuments({
+        status: {
+          $in: [
+            'Draft',
+            'Pending Approval',
+            'Scheduled'
+          ]
+        }
+      }),
+
+      Comment.countDocuments(),
+
+      Blog.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: '$likes'
+            }
+          }
+        }
+      ]),
+
+      Blog.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: '$views'
+            }
+          }
+        }
+      ])
+    ]);
+
+    res.json({
+      users,
+      posts,
+      publishedPosts: published,
+      unpublishedPosts: drafts,
+      comments,
+      totalLikes: likes[0]?.total || 0,
+      totalViews: views[0]?.total || 0
+    });
+  } catch (e) {
+    next(e);
+  }
+};

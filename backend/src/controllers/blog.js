@@ -1,9 +1,287 @@
-const Blog=require('../models/Blog');
-const allowed=['Draft','Pending Approval','Scheduled','Published'];
-exports.create=async(req,res,next)=>{try{const {title,content,category,tags,photo,media,status,scheduledAt}=req.body;if(!title||!content)return res.status(422).json({message:'Title and content are required'});let s=status||'Draft';if(req.user.role==='author'&&s==='Published')s='Pending Approval';const b=await Blog.create({title,content,category,tags:Array.isArray(tags)?tags:[],photo,media:Array.isArray(media)?media:[],author:req.user._id,authorName:req.user.name,status:s,scheduledAt});res.status(201).json(b)}catch(e){next(e)}};
-exports.list=async(req,res,next)=>{try{const {q,category,tag,status,author}=req.query;const filter={};if(!req.user||!['admin','editor'].includes(req.user.role))filter.status='Published';if(status&&allowed.includes(status))filter.status=status;if(category)filter.category=category;if(tag)filter.tags=tag;if(author)filter.author=author;let query=Blog.find(filter).populate('author','name email role').sort({createdAt:-1});if(q)query=Blog.find({...filter,$text:{$search:q}}).populate('author','name email role').sort({score:{$meta:'textScore'},createdAt:-1});res.json(await query)}catch(e){next(e)}};
-exports.get=async(req,res,next)=>{try{const b=await Blog.findById(req.params.id).populate('author','name email role');if(!b)return res.status(404).json({message:'Blog not found'});b.views++;await b.save();res.json(b)}catch(e){next(e)}};
-exports.update=async(req,res,next)=>{try{const b=await Blog.findById(req.params.id);if(!b)return res.status(404).json({message:'Blog not found'});const owner=b.author.toString()===req.user._id.toString();if(!owner&&!['admin','editor'].includes(req.user.role))return res.status(403).json({message:'You cannot edit this blog'});const fields=['title','content','category','tags','photo','media','status','scheduledAt'];for(const f of fields)if(req.body[f]!==undefined)b[f]=req.body[f];if(b.status==='Published'&&!b.publishedAt)b.publishedAt=new Date();await b.save();res.json(b)}catch(e){next(e)}};
-exports.remove=async(req,res,next)=>{try{const b=await Blog.findById(req.params.id);if(!b)return res.status(404).json({message:'Blog not found'});if(b.author.toString()!==req.user._id.toString()&&!['admin','editor'].includes(req.user.role))return res.status(403).json({message:'You cannot delete this blog'});await b.deleteOne();res.json({message:'Blog deleted successfully'})}catch(e){next(e)}};
-exports.like=async(req,res,next)=>{try{const b=await Blog.findByIdAndUpdate(req.params.id,{$inc:{likes:1}},{new:true});if(!b)return res.status(404).json({message:'Blog not found'});res.json({likes:b.likes})}catch(e){next(e)}};
-exports.changeStatus=async(req,res,next)=>{try{if(!['admin','editor'].includes(req.user.role))return res.status(403).json({message:'Only admin/editor can approve or publish'});const {status}=req.body;if(!allowed.includes(status))return res.status(422).json({message:'Invalid status'});const b=await Blog.findByIdAndUpdate(req.params.id,{status,publishedAt:status==='Published'?new Date():undefined},{new:true});if(!b)return res.status(404).json({message:'Blog not found'});res.json(b)}catch(e){next(e)}};
+const Blog = require('../models/Blog');
+
+const allowed = [
+  'Draft',
+  'Pending Approval',
+  'Scheduled',
+  'Published'
+];
+
+exports.create = async (req, res, next) => {
+  try {
+    const {
+      title,
+      content,
+      category,
+      tags,
+      photo,
+      media,
+      status,
+      scheduledAt
+    } = req.body;
+
+    if (!title || !content) {
+      return res.status(422).json({
+        message: 'Title and content are required'
+      });
+    }
+
+    let s = status || 'Draft';
+
+    if (req.user.role === 'author' && s === 'Published') {
+      s = 'Pending Approval';
+    }
+
+    const b = await Blog.create({
+      title,
+      content,
+      category,
+      tags: Array.isArray(tags) ? tags : [],
+      photo,
+      media: Array.isArray(media) ? media : [],
+      author: req.user._id,
+      authorName: req.user.name,
+      status: s,
+      scheduledAt
+    });
+
+    res.status(201).json(b);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.list = async (req, res, next) => {
+  try {
+    const {
+      q,
+      category,
+      tag,
+      status,
+      author
+    } = req.query;
+
+    const filter = {};
+
+    if (
+      !req.user ||
+      !['admin', 'editor'].includes(req.user.role)
+    ) {
+      filter.status = 'Published';
+    }
+
+    if (status && allowed.includes(status)) {
+      filter.status = status;
+    }
+
+    if (category) {
+      filter.category = category;
+    }
+
+    if (tag) {
+      filter.tags = tag;
+    }
+
+    if (author) {
+      filter.author = author;
+    }
+
+    let query = Blog
+      .find(filter)
+      .populate('author', 'name email role')
+      .sort({ createdAt: -1 });
+
+    if (q) {
+      query = Blog
+        .find({
+          ...filter,
+          $text: {
+            $search: q
+          }
+        })
+        .populate('author', 'name email role')
+        .sort({
+          score: {
+            $meta: 'textScore'
+          },
+          createdAt: -1
+        });
+    }
+
+    res.json(await query);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.get = async (req, res, next) => {
+  try {
+    const b = await Blog
+      .findById(req.params.id)
+      .populate('author', 'name email role');
+
+    if (!b) {
+      return res.status(404).json({
+        message: 'Blog not found'
+      });
+    }
+
+    b.views++;
+
+    await b.save();
+
+    res.json(b);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.update = async (req, res, next) => {
+  try {
+    const b = await Blog.findById(req.params.id);
+
+    if (!b) {
+      return res.status(404).json({
+        message: 'Blog not found'
+      });
+    }
+
+    const owner =
+      b.author.toString() === req.user._id.toString();
+
+    if (
+      !owner &&
+      !['admin', 'editor'].includes(req.user.role)
+    ) {
+      return res.status(403).json({
+        message: 'You cannot edit this blog'
+      });
+    }
+
+    const fields = [
+      'title',
+      'content',
+      'category',
+      'tags',
+      'photo',
+      'media',
+      'status',
+      'scheduledAt'
+    ];
+
+    for (const f of fields) {
+      if (req.body[f] !== undefined) {
+        b[f] = req.body[f];
+      }
+    }
+
+    if (b.status === 'Published' && !b.publishedAt) {
+      b.publishedAt = new Date();
+    }
+
+    await b.save();
+
+    res.json(b);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.remove = async (req, res, next) => {
+  try {
+    const b = await Blog.findById(req.params.id);
+
+    if (!b) {
+      return res.status(404).json({
+        message: 'Blog not found'
+      });
+    }
+
+    if (
+      b.author.toString() !== req.user._id.toString() &&
+      !['admin', 'editor'].includes(req.user.role)
+    ) {
+      return res.status(403).json({
+        message: 'You cannot delete this blog'
+      });
+    }
+
+    await b.deleteOne();
+
+    res.json({
+      message: 'Blog deleted successfully'
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.like = async (req, res, next) => {
+  try {
+    const b = await Blog.findByIdAndUpdate(
+      req.params.id,
+      {
+        $inc: {
+          likes: 1
+        }
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!b) {
+      return res.status(404).json({
+        message: 'Blog not found'
+      });
+    }
+
+    res.json({
+      likes: b.likes
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.changeStatus = async (req, res, next) => {
+  try {
+    if (!['admin', 'editor'].includes(req.user.role)) {
+      return res.status(403).json({
+        message: 'Only admin/editor can approve or publish'
+      });
+    }
+
+    const { status } = req.body;
+
+    if (!allowed.includes(status)) {
+      return res.status(422).json({
+        message: 'Invalid status'
+      });
+    }
+
+    const b = await Blog.findByIdAndUpdate(
+      req.params.id,
+      {
+        status,
+        publishedAt:
+          status === 'Published'
+            ? new Date()
+            : undefined
+      },
+      {
+        new: true
+      }
+    );
+
+    if (!b) {
+      return res.status(404).json({
+        message: 'Blog not found'
+      });
+    }
+
+    res.json(b);
+  } catch (e) {
+    next(e);
+  }
+};

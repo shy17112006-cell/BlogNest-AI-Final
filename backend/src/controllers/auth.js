@@ -1,7 +1,140 @@
-const bcrypt=require('bcryptjs');const jwt=require('jsonwebtoken');const User=require('../models/User');
-const token=u=>jwt.sign({id:u._id},process.env.JWT_SECRET,{expiresIn:'7d'});
-exports.register=async(req,res,next)=>{try{const {name,email,password}=req.body;if(!name||!email||!password)return res.status(422).json({message:'Name, email and password are required'});if(password.length<6)return res.status(422).json({message:'Password must be at least 6 characters'});if(await User.findOne({email}))return res.status(409).json({message:'Email already registered'});const role=(process.env.BOOTSTRAP_ADMIN_EMAIL||'').toLowerCase()===email.toLowerCase()?'admin':'reader';const hash=await bcrypt.hash(password,10);const u=await User.create({name,email,password:hash,role});res.status(201).json({message:'User registered successfully',user:{id:u._id,name:u.name,email:u.email,role:u.role}});}catch(e){next(e)}};
-exports.login=async(req,res,next)=>{try{const {email,password}=req.body;const u=await User.findOne({email});if(!u||!u.active||!(await bcrypt.compare(password,u.password)))return res.status(401).json({message:'Invalid credentials'});res.json({message:'Login successful',token:token(u),user:{id:u._id,name:u.name,email:u.email,role:u.role}})}catch(e){next(e)}};
-exports.profile=async(req,res)=>res.json({user:req.user});
-exports.listUsers=async(req,res,next)=>{try{res.json(await User.find().select('-password').sort({createdAt:-1}))}catch(e){next(e)}};
-exports.updateRole=async(req,res,next)=>{try{const {role}=req.body;if(!['admin','editor','author','reader'].includes(role))return res.status(422).json({message:'Invalid role'});const u=await User.findByIdAndUpdate(req.params.id,{role},{new:true}).select('-password');if(!u)return res.status(404).json({message:'User not found'});res.json(u)}catch(e){next(e)}};
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+const token = (u) =>
+  jwt.sign(
+    { id: u._id },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d' }
+);
+
+exports.register = async (req, res, next) => {
+  try {
+    const { name, email, password } = req.body;
+
+    if (!name || !email || !password) {
+      return res.status(422).json({
+        message: 'Name, email and password are required'
+      });
+    }
+
+    if (password.length < 6) {
+      return res.status(422).json({
+        message: 'Password must be at least 6 characters'
+      });
+    }
+
+    if (await User.findOne({ email })) {
+      return res.status(409).json({
+        message: 'Email already registered'
+      });
+    }
+
+    const role =
+      (process.env.BOOTSTRAP_ADMIN_EMAIL || '').toLowerCase() ===
+      email.toLowerCase()
+        ? 'admin'
+        : 'reader';
+
+    const hash = await bcrypt.hash(password, 10);
+
+    const u = await User.create({
+      name,
+      email,
+      password: hash,
+      role
+    });
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      user: {
+        id: u._id,
+        name: u.name,
+        email: u.email,
+        role: u.role
+      }
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.login = async (req, res, next) => {
+  try {
+    const { email, password } = req.body;
+
+    const u = await User.findOne({ email });
+
+    if (
+      !u ||
+      !u.active ||
+      !(await bcrypt.compare(password, u.password))
+    ) {
+      return res.status(401).json({
+        message: 'Invalid credentials'
+      });
+    }
+
+    res.json({
+      message: 'Login successful',
+      token: token(u),
+      user: {
+        id: u._id,
+        name: u.name,
+        email: u.email,
+        role: u.role
+      }
+    });
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.profile = async (req, res) =>
+  res.json({
+    user: req.user
+  });
+
+exports.listUsers = async (req, res, next) => {
+  try {
+    res.json(
+      await User
+        .find()
+        .select('-password')
+        .sort({ createdAt: -1 })
+    );
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.updateRole = async (req, res, next) => {
+  try {
+    const { role } = req.body;
+
+    if (!['admin', 'editor', 'author', 'reader'].includes(role)) {
+      return res.status(422).json({
+        message: 'Invalid role'
+      });
+    }
+
+    const u = await User
+      .findByIdAndUpdate(
+        req.params.id,
+        { role },
+        { new: true }
+      )
+      .select('-password');
+
+    if (!u) {
+      return res.status(404).json({
+        message: 'User not found'
+      });
+    }
+
+    res.json(u);
+  } catch (e) {
+    next(e);
+  }
+};
