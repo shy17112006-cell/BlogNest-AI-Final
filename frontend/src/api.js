@@ -107,9 +107,13 @@ export const api = {
     request(`/auth/users/${userId}/role`, {
       method: "PATCH",
       token,
-      body: {
-        role,
-      },
+      body: { role },
+    }),
+
+  deleteUser: (token, userId) =>
+    request(`/auth/users/${userId}`, {
+      method: "DELETE",
+      token,
     }),
 };
 
@@ -121,6 +125,12 @@ export const api = {
 
 api.blogs = (token, query = "") =>
   request(`/blogs${query}`, {
+    method: "GET",
+    token,
+  });
+
+api.myBlogs = (token) =>
+  request("/blogs/my", {
     method: "GET",
     token,
   });
