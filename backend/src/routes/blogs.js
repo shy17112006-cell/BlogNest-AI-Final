@@ -11,6 +11,12 @@ r.post(
 );
 
 r.get(
+  '/my',
+  auth,
+  c.myBlogs
+);
+
+r.get(
   '/',
   optional,
   c.list

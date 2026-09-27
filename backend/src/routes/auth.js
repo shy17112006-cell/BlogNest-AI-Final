@@ -33,4 +33,11 @@ r.patch(
   c.updateRole
 );
 
+r.delete(
+  '/users/:id',
+  auth,
+  role('admin'),
+  c.deleteUser
+);
+
 module.exports = r;

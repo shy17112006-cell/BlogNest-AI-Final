@@ -11,7 +11,7 @@ const token = (u) =>
 
 exports.register = async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, role: requestedRole } = req.body;
 
     if (!name || !email || !password) {
       return res.status(422).json({
@@ -31,11 +31,18 @@ exports.register = async (req, res, next) => {
       });
     }
 
-    const role =
+    // Bootstrap admin email gets admin role automatically
+    let role = 'reader';
+    if (
       (process.env.BOOTSTRAP_ADMIN_EMAIL || '').toLowerCase() ===
       email.toLowerCase()
-        ? 'admin'
-        : 'reader';
+    ) {
+      role = 'admin';
+    } else if (requestedRole === 'author') {
+      // Only allow self-registration as reader or author
+      role = 'author';
+    }
+    // editor and admin can only be assigned by existing admin
 
     const hash = await bcrypt.hash(password, 10);
 
@@ -134,6 +141,28 @@ exports.updateRole = async (req, res, next) => {
     }
 
     res.json(u);
+  } catch (e) {
+    next(e);
+  }
+};
+
+exports.deleteUser = async (req, res, next) => {
+  try {
+    if (req.params.id === req.user._id.toString()) {
+      return res.status(400).json({
+        message: 'You cannot delete your own account'
+      });
+    }
+
+    const u = await User.findByIdAndDelete(req.params.id);
+
+    if (!u) {
+      return res.status(404).json({
+        message: 'User not found'
+      });
+    }
+
+    res.json({ message: 'User deleted successfully' });
   } catch (e) {
     next(e);
   }

@@ -11,6 +11,7 @@ const blogSchema=new mongoose.Schema({
  status:{type:String,enum:['Draft','Pending Approval','Scheduled','Published'],default:'Draft',index:true},
  scheduledAt:{type:Date},
  likes:{type:Number,default:0,min:0},
+ likedBy:{type:[{type:mongoose.Schema.Types.ObjectId,ref:'User'}],default:[]},
  views:{type:Number,default:0,min:0},
  publishedAt:{type:Date}
 },{timestamps:true});

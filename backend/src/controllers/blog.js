@@ -114,6 +114,18 @@ exports.list = async (req, res, next) => {
   }
 };
 
+exports.myBlogs = async (req, res, next) => {
+  try {
+    const blogs = await Blog
+      .find({ author: req.user._id })
+      .populate('author', 'name email role')
+      .sort({ createdAt: -1 });
+    res.json(blogs);
+  } catch (e) {
+    next(e);
+  }
+};
+
 exports.get = async (req, res, next) => {
   try {
     const b = await Blog
@@ -218,27 +230,28 @@ exports.remove = async (req, res, next) => {
 
 exports.like = async (req, res, next) => {
   try {
-    const b = await Blog.findByIdAndUpdate(
-      req.params.id,
-      {
-        $inc: {
-          likes: 1
-        }
-      },
-      {
-        new: true
-      }
-    );
+    const b = await Blog.findById(req.params.id);
 
     if (!b) {
-      return res.status(404).json({
-        message: 'Blog not found'
-      });
+      return res.status(404).json({ message: 'Blog not found' });
     }
 
-    res.json({
-      likes: b.likes
-    });
+    const userId = req.user._id.toString();
+    const alreadyLiked = b.likedBy.map(id => id.toString()).includes(userId);
+
+    if (alreadyLiked) {
+      // Unlike
+      b.likedBy = b.likedBy.filter(id => id.toString() !== userId);
+      b.likes = Math.max(0, b.likes - 1);
+    } else {
+      // Like
+      b.likedBy.push(req.user._id);
+      b.likes = b.likes + 1;
+    }
+
+    await b.save();
+
+    res.json({ likes: b.likes, hasLiked: !alreadyLiked });
   } catch (e) {
     next(e);
   }
