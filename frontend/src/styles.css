@@ -751,6 +751,16 @@ select {
   grid-template-columns: 1fr;
 }
 
+.myblogs-loading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 48px 0;
+  justify-content: center;
+  color: var(--text-3);
+  font-size: 14px;
+}
+
 /* ============================================================
    POST CARD
    ============================================================ */

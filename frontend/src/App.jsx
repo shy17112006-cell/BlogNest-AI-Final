@@ -70,6 +70,7 @@ export default function App() {
 
   const [blogs, setBlogs] = useState([]);
   const [myBlogs, setMyBlogs] = useState([]);
+  const [myBlogsLoading, setMyBlogsLoading] = useState(false);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [stats, setStats] = useState(null);
@@ -120,12 +121,17 @@ export default function App() {
   }
 
   async function loadMyBlogs(currentToken = token) {
+    setMyBlogsLoading(true);
     try {
       const data = await api.myBlogs(currentToken);
-      setMyBlogs(getBlogArray(data));
-      return getBlogArray(data);
+      const list = getBlogArray(data);
+      setMyBlogs(list);
+      return list;
     } catch (err) {
-      console.error(err); setMyBlogs([]); return [];
+      console.error("loadMyBlogs failed:", err);
+      return [];
+    } finally {
+      setMyBlogsLoading(false);
     }
   }
 
@@ -179,6 +185,13 @@ export default function App() {
     loadUser();
     return () => { cancelled = true; };
   }, [token]);
+
+  // Refresh My Blogs every time the user opens that tab
+  useEffect(() => {
+    if (tab === "myblogs" && token && user) {
+      loadMyBlogs(token);
+    }
+  }, [tab]);
 
   // Close profile dropdown on outside click
   useEffect(() => {
@@ -662,7 +675,12 @@ export default function App() {
                 </button>
               </div>
 
-              {myBlogs.length === 0 ? (
+              {myBlogsLoading ? (
+                <div className="myblogs-loading">
+                  <span className="spin" />
+                  <span>Loading your posts…</span>
+                </div>
+              ) : myBlogs.length === 0 ? (
                 <EmptyState
                   icon={Icons.write}
                   title="No posts yet"
